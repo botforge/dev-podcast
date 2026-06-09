@@ -69,10 +69,12 @@ class StudentPersona:
                 "Chase the interesting connections -- they're how you learn.",
             ),
             "",
-            "Speak naturally, like a real person on a podcast. One conversational turn at "
-            "a time -- a question or a reaction, not a monologue. Never narrate stage "
-            "directions. When you genuinely understand something, say so and move on; "
-            f"that shared understanding is how the episode ends. Tone: {tone}.",
+            "This is a fast, natural back-and-forth on a podcast -- NOT a lecture. Each "
+            "turn is ONE short utterance: usually 1-3 sentences, rarely more. Ask a single "
+            "question or react to a single point, then STOP and let the senior respond. "
+            "Never stack multiple questions or cover several topics in one turn. Never "
+            "narrate stage directions. When something genuinely clicks, say so and move "
+            f"on -- that shared understanding is how the episode ends. Tone: {tone}.",
         ]
         if self.testing_appetite > 0.5:
             lines.append(
@@ -129,8 +131,11 @@ class TeacherPersona:
                 "Be a warm coach -- encourage, acknowledge good questions.",
             ),
             "",
-            "Speak naturally, like a real person on a podcast. One conversational turn at a "
-            "time. Never narrate stage directions. Tone: " + tone + ".",
+            "This is a fast, natural back-and-forth on a podcast -- NOT a lecture. Each turn "
+            "is ONE short utterance: usually 1-3 sentences. Make a single point or answer "
+            "the one thing asked, then STOP and let the junior come back at you. Do NOT "
+            "deliver several beats, cover multiple topics, or pre-empt the next question in "
+            "a single turn. Never narrate stage directions. Tone: " + tone + ".",
         ]
         return "\n".join(lines)
 

@@ -122,7 +122,7 @@ class Dialogue:
             msgs.append({"role": "user", "content": f"[director note, not spoken: {director}]"})
         resp = self.client.messages.create(
             model=MODEL,
-            max_tokens=1200,
+            max_tokens=350,  # a turn is 1-3 sentences, not an essay
             thinking={"type": "disabled"},  # curiosity, not deep reasoning -- keep it snappy
             system=self.cfg.student.preamble(self.cfg.repo, self._seed, self.cfg.episode.tone),
             messages=msgs,
@@ -136,7 +136,7 @@ class Dialogue:
         if director:
             msgs.append({"role": "user", "content": f"[director note, not spoken: {director}]"})
         system = self.cfg.teacher.preamble(self.cfg.repo, self.cfg.episode.tone)
-        common = dict(model=MODEL, max_tokens=1500, thinking={"type": "adaptive"},
+        common = dict(model=MODEL, max_tokens=450, thinking={"type": "adaptive"},
                       output_config={"effort": "medium"}, system=system)
         try:
             resp = self._beta_create(betas=[MCP_BETA], mcp_servers=[DEEPWIKI],
@@ -185,30 +185,33 @@ class Dialogue:
             "you're here to understand and ask your first real question.]"
         )})
         self._student_turn(director=None, segment="open")
-        self._teacher_turn(director=None, segment="dialogue")
 
+        # Alternate one turn at a time so quiz breaks land cleanly after a Student turn.
+        next_speaker = TEACHER
         while True:
             wc = self._word_count
-            if quiz_marks and wc >= quiz_marks[0]:
-                quiz_marks.pop(0)
-                self._teacher_turn(
-                    director="a check-in would fit here -- pose ONE short question to test "
-                             "the junior's understanding so far, then wait for the answer.",
-                    segment="quiz_q",
-                )
-                self._student_turn(director="answer the senior's quiz question; attempt it for real.", segment="quiz_a")
-                self._teacher_turn(director="briefly evaluate the answer, then move on.", segment="quiz_eval")
-                continue
 
-            if wc >= target_words:
-                self._student_turn(director="you've reached real understanding -- summarize what clicked.", segment="dialogue")
+            if wc >= target_words and next_speaker == STUDENT:
+                self._student_turn(director="you've reached real understanding -- summarize what clicked, briefly.", segment="dialogue")
                 self._teacher_turn(director="bring the episode to a natural close and sign off.", segment="close")
                 break
 
-            near_end = wc >= 0.85 * target_words
-            note = "we're near time -- start steering toward a wrap-up and consensus." if near_end else None
-            self._student_turn(director=note, segment="dialogue")
-            self._teacher_turn(director=note, segment="dialogue")
+            if quiz_marks and wc >= quiz_marks[0] and next_speaker == TEACHER:
+                quiz_marks.pop(0)
+                self._teacher_turn(director="pose ONE short question to test the junior's understanding so far, then wait.", segment="quiz_q")
+                self._student_turn(director="answer the senior's quiz question; attempt it for real.", segment="quiz_a")
+                self._teacher_turn(director="evaluate the answer in 1-2 sentences, then move on.", segment="quiz_eval")
+                next_speaker = STUDENT
+                continue
+
+            note = ("we're near time -- start steering toward a wrap-up and consensus."
+                    if wc >= 0.85 * target_words else None)
+            if next_speaker == STUDENT:
+                self._student_turn(director=note, segment="dialogue")
+                next_speaker = TEACHER
+            else:
+                self._teacher_turn(director=note, segment="dialogue")
+                next_speaker = STUDENT
 
         return self.turns
 
