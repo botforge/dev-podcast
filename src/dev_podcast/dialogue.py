@@ -11,6 +11,7 @@ Output: script.json (MisoTTS input) + wiki.md (free DeepWiki deliverable) + tran
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,10 +19,16 @@ import anthropic
 
 from .personas import PodcastConfig
 
+
+def _is_mcp_conn_error(e: Exception) -> bool:
+    """DeepWiki dropping the connection surfaces as a 400 mentioning the MCP server."""
+    return isinstance(e, anthropic.BadRequestError) and "MCP server" in str(e)
+
 MODEL = "claude-opus-4-8"
 WORDS_PER_MINUTE = 150
 MCP_BETA = "mcp-client-2025-11-20"
 DEEPWIKI = {"type": "url", "name": "deepwiki", "url": "https://mcp.deepwiki.com/mcp"}
+DEEPWIKI_TOOLS = [{"type": "mcp_toolset", "mcp_server_name": "deepwiki"}]
 
 TEACHER = 0  # speaker_id -- senior
 STUDENT = 1  # speaker_id -- junior
@@ -49,47 +56,62 @@ class Dialogue:
         self.teacher_msgs: list[dict] = []
         self.student_msgs: list[dict] = []
 
+    # --- resilient API wrapper -----------------------------------------------
+
+    def _beta_create(self, *, retries: int = 3, **kw):
+        """beta.messages.create, retrying transient DeepWiki connection drops."""
+        last: Exception | None = None
+        for i in range(retries):
+            try:
+                return self.client.beta.messages.create(**kw)
+            except anthropic.BadRequestError as e:
+                if not _is_mcp_conn_error(e):
+                    raise
+                last = e
+                time.sleep(2 * (i + 1))
+        assert last is not None
+        raise last
+
     # --- knowledge seed + wiki deliverable (one DeepWiki call each) -----------
 
     def _ask_deepwiki(self, question: str, max_tokens: int = 4000) -> str:
-        resp = self.client.beta.messages.create(
-            model=MODEL,
-            max_tokens=max_tokens,
-            betas=[MCP_BETA],
-            mcp_servers=[DEEPWIKI],
+        kw = dict(
+            model=MODEL, max_tokens=max_tokens, betas=[MCP_BETA],
+            mcp_servers=[DEEPWIKI], tools=DEEPWIKI_TOOLS,
             system=(
                 f"You can query the DeepWiki knowledge tool for the GitHub repository "
                 f"`{self.cfg.repo}`. Use it to answer grounded in the real code."
             ),
             messages=[{"role": "user", "content": question}],
         )
-        # Server-side tools may pause; resume until done.
+        resp = self._beta_create(**kw)
         while resp.stop_reason == "pause_turn":
-            resp = self.client.beta.messages.create(
-                model=MODEL,
-                max_tokens=max_tokens,
-                betas=[MCP_BETA],
-                mcp_servers=[DEEPWIKI],
-                messages=[
-                    {"role": "user", "content": question},
-                    {"role": "assistant", "content": resp.content},
-                ],
-            )
+            kw["messages"] = [
+                {"role": "user", "content": question},
+                {"role": "assistant", "content": resp.content},
+            ]
+            resp = self._beta_create(**kw)
         return _text_of(resp.content)
 
     def build_seed_and_wiki(self) -> tuple[str, str]:
-        seed = self._ask_deepwiki(
-            "In 2-3 sentences, give a newcomer the high-level pitch of this repo: what it "
-            "is, what problem it solves, and the single most interesting thing about how "
-            "it's built. Plain prose, no headings.",
-            max_tokens=1000,
-        )
-        wiki = self._ask_deepwiki(
-            "Produce a concise markdown wiki of this repo for an engineer: an architecture "
-            "overview, the key modules and what each does, and the 2-3 most important "
-            "runtime flows. Use headings and bullet points.",
-            max_tokens=6000,
-        )
+        try:
+            seed = self._ask_deepwiki(
+                "In 2-3 sentences, give a newcomer the high-level pitch of this repo: what "
+                "it is, what problem it solves, and the single most interesting thing about "
+                "how it's built. Plain prose, no headings.",
+                max_tokens=1000,
+            )
+        except anthropic.APIError:
+            seed = ""
+        try:
+            wiki = self._ask_deepwiki(
+                "Produce a concise markdown wiki of this repo for an engineer: an "
+                "architecture overview, the key modules and what each does, and the 2-3 "
+                "most important runtime flows. Use headings and bullet points.",
+                max_tokens=6000,
+            )
+        except anthropic.APIError:
+            wiki = ""  # best-effort deliverable; don't sink the whole episode
         return seed, wiki
 
     # --- the two agents -------------------------------------------------------
@@ -113,24 +135,19 @@ class Dialogue:
         msgs = list(self.teacher_msgs)
         if director:
             msgs.append({"role": "user", "content": f"[director note, not spoken: {director}]"})
-        resp = self.client.beta.messages.create(
-            model=MODEL,
-            max_tokens=1500,
-            betas=[MCP_BETA],
-            mcp_servers=[DEEPWIKI],
-            thinking={"type": "adaptive"},
-            output_config={"effort": "medium"},
-            system=self.cfg.teacher.preamble(self.cfg.repo, self.cfg.episode.tone),
-            messages=msgs,
-        )
-        while resp.stop_reason == "pause_turn":
-            msgs.append({"role": "assistant", "content": resp.content})
-            resp = self.client.beta.messages.create(
-                model=MODEL, max_tokens=1500, betas=[MCP_BETA], mcp_servers=[DEEPWIKI],
-                thinking={"type": "adaptive"}, output_config={"effort": "medium"},
-                system=self.cfg.teacher.preamble(self.cfg.repo, self.cfg.episode.tone),
-                messages=msgs,
-            )
+        system = self.cfg.teacher.preamble(self.cfg.repo, self.cfg.episode.tone)
+        common = dict(model=MODEL, max_tokens=1500, thinking={"type": "adaptive"},
+                      output_config={"effort": "medium"}, system=system)
+        try:
+            resp = self._beta_create(betas=[MCP_BETA], mcp_servers=[DEEPWIKI],
+                                     tools=DEEPWIKI_TOOLS, messages=msgs, **common)
+            while resp.stop_reason == "pause_turn":
+                msgs.append({"role": "assistant", "content": resp.content})
+                resp = self._beta_create(betas=[MCP_BETA], mcp_servers=[DEEPWIKI],
+                                         tools=DEEPWIKI_TOOLS, messages=msgs, **common)
+        except anthropic.APIError:
+            # DeepWiki unavailable -> let the senior answer from the conversation so far.
+            resp = self.client.messages.create(messages=msgs, **common)
         text = _text_of(resp.content)
         self._record(TEACHER, text, segment)
         return self.turns[-1]
