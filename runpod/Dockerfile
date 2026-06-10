@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ffmpeg \
 WORKDIR /app
 RUN git clone --depth 1 https://github.com/MisoLabsAI/MisoTTS.git
 WORKDIR /app/MisoTTS
+# MisoTTS pulls the Llama 3.2 tokenizer from the gated meta-llama repo. Redirect to an
+# ungated mirror with the identical tokenizer -- no Meta license, no HF token needed.
+RUN grep -rl "meta-llama/Llama-3.2-1B" . | xargs -r sed -i \
+        's#meta-llama/Llama-3.2-1B#unsloth/Llama-3.2-1B#g' || true
 # torch==2.4.0 in requirements is already satisfied by the base image -> pip skips it.
 RUN pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir runpod boto3
