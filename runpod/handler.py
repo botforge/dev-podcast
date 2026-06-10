@@ -2,10 +2,12 @@
 
 The MISO 8B model runs HERE, on RunPod's GPU -- never on the user's machine.
 
-Design note: the model is loaded LAZILY inside the job (not at import), and the
-handler wraps everything in try/except. So the worker boots and reports `ready`
-immediately, and any failure (model download, GPU, deps) comes back as a readable
-error in the job result instead of an invisible startup crash-loop.
+Voices: MISO has no built-in voices -- distinct speakers come from REFERENCE audio.
+We prime speaker 0 and speaker 1 each with a short reference clip (voice cloning),
+seeded into the generation context, so the two voices stay distinct and consistent.
+
+Model is loaded LAZILY inside the job with try/except, so the worker boots ready
+fast and any failure returns as a readable error in the job result.
 
 Input job:  {"input": {"turns": [{"speaker_id": 0|1, "text": "..."}, ...], "name": "..."}}
 Output:     {"url": <presigned R2 url>, "key": ..., "seconds": ..., "turns": ...}
@@ -19,11 +21,18 @@ import traceback
 
 import runpod
 
-# The reference script keeps ALL prior audio as context, which blows up over a 20-min
-# episode. Window to the last N turns -- enough for prosody continuity.
-CONTEXT_WINDOW = int(os.getenv("MISO_CONTEXT_WINDOW", "6"))
+# Total seconds of audio context (reference clips + recent turns) fed per generation.
+# Kept well under MISO's sequence limit; references are always included.
+MAX_CONTEXT_SEC = float(os.getenv("MISO_MAX_CONTEXT_SEC", "55"))
 
-_generator = None  # loaded on first job
+# Reference voice per speaker id: (file under voices/, transcript of the clip).
+REF_VOICES = {
+    0: ("voices/voiceA.wav", "I had that curiosity beside me at this moment."),
+    1: ("voices/voiceB.wav", "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes."),
+}
+
+_generator = None
+_refs = None
 
 
 def _get_generator():
@@ -31,7 +40,6 @@ def _get_generator():
     if _generator is None:
         import torch
         from generator import DEFAULT_MISO_TTS_REPO_ID, load_miso_8b
-
         device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"[boot] loading MisoTTS on {device} (first job cold-starts) ...", flush=True)
         t0 = time.time()
@@ -42,21 +50,55 @@ def _get_generator():
     return _generator
 
 
+def _load_refs(gen):
+    """Load the two reference clips as Segments (resampled to the model's rate)."""
+    global _refs
+    if _refs is None:
+        import torchaudio
+        from generator import Segment
+        here = os.path.dirname(os.path.abspath(__file__))
+        segs = {}
+        for spk, (rel, text) in REF_VOICES.items():
+            wav, sr = torchaudio.load(os.path.join(here, rel))
+            wav = wav.mean(dim=0)  # to mono [time]
+            if sr != gen.sample_rate:
+                wav = torchaudio.functional.resample(wav, sr, gen.sample_rate)
+            segs[spk] = Segment(text=text, speaker=spk, audio=wav)
+            print(f"[refs] speaker {spk}: {wav.shape[0] / gen.sample_rate:.1f}s", flush=True)
+        _refs = segs
+    return _refs
+
+
 def _max_ms(text: str) -> int:
     return min(45_000, max(8_000, len(text.split()) * 420))
+
+
+def _context(refs, segments, sr):
+    """References (always) + as many recent turns as fit the audio-seconds budget."""
+    ctx = [refs[0], refs[1]]
+    used = sum(s.audio.shape[0] for s in ctx) / sr
+    recent = []
+    for s in reversed(segments):
+        dur = s.audio.shape[0] / sr
+        if used + dur > MAX_CONTEXT_SEC:
+            break
+        used += dur
+        recent.append(s)
+    return ctx + list(reversed(recent))
 
 
 def _render(gen, turns):
     import torch
     from generator import Segment
-
+    refs = _load_refs(gen)
     segments = []
     for i, t in enumerate(turns):
         spk = int(t["speaker_id"])
         text = t["text"]
         audio = gen.generate(
             text=text, speaker=spk,
-            context=segments[-CONTEXT_WINDOW:], max_audio_length_ms=_max_ms(text),
+            context=_context(refs, segments, gen.sample_rate),
+            max_audio_length_ms=_max_ms(text),
         )
         segments.append(Segment(text=text, speaker=spk, audio=audio))
         print(f"[render] turn {i + 1}/{len(turns)} spk={spk} {len(text.split())}w", flush=True)
@@ -65,7 +107,6 @@ def _render(gen, turns):
 
 def _upload(data: bytes, key: str) -> str:
     import boto3
-
     s3 = boto3.client(
         "s3",
         endpoint_url=f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
@@ -83,7 +124,6 @@ def _upload(data: bytes, key: str) -> str:
 def handler(job):
     try:
         import torchaudio
-
         inp = job.get("input") or {}
         turns = inp.get("turns")
         if not turns:

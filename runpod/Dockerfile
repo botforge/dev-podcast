@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir runpod boto3
 
 COPY handler.py /app/MisoTTS/handler.py
+COPY voices /app/MisoTTS/voices
 
 # Persist the ~16GB weights on the attached network volume so cold starts don't re-download.
 ENV HF_HOME=/runpod-volume/hf

@@ -5,3 +5,7 @@ __pycache__/
 out/
 *.wav
 .DS_Store
+
+# keep reference voice clips (override the *.wav ignore)
+!runpod/voices/
+!runpod/voices/*.wav
