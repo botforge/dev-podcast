@@ -4,7 +4,9 @@
 FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
-RUN apt-get update && apt-get install -y --no-install-recommends git ffmpeg \
+# build-essential (gcc) lets torch.compile / Triton JIT-compile CUDA kernels at runtime
+# (the slim -runtime base omits it). Without it, torch.compile errors out.
+RUN apt-get update && apt-get install -y --no-install-recommends git ffmpeg build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
