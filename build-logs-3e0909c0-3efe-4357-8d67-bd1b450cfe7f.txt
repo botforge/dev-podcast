@@ -1,0 +1,105 @@
+2026-06-10T10:01:34.290Z [INFO] Successfully cloned repository git://github.com/botforge/dev-podcast at main
+2026-06-10T10:01:34.291Z [INFO] Creating cache directory.
+2026-06-10T10:01:39.309Z [INFO] Build using docker
+2026-06-10T10:01:39.402Z [INFO] charming_kare
+2026-06-10T10:01:39.590Z [INFO] #0 building with "charming_kare" instance using docker-container driver
+2026-06-10T10:01:39.590Z [INFO] #1 [internal] booting buildkit
+2026-06-10T10:01:39.740Z [INFO] #1 pulling image moby/buildkit:v0.17.2
+2026-06-10T10:01:40.795Z [INFO] #1 pulling image moby/buildkit:v0.17.2 1.2s done
+2026-06-10T10:01:40.945Z [INFO] #1 creating container buildx_buildkit_charming_kare0
+2026-06-10T10:01:42.526Z [INFO] #1 creating container buildx_buildkit_charming_kare0 1.7s done
+2026-06-10T10:01:42.646Z [INFO] #1 DONE 2.9s
+2026-06-10T10:01:42.646Z [INFO] #2 [internal] load build definition from Dockerfile
+2026-06-10T10:01:42.646Z [INFO] #2 transferring dockerfile: 964B done
+2026-06-10T10:01:42.646Z [INFO] #2 DONE 0.0s
+2026-06-10T10:01:42.646Z [INFO] #3 [internal] load metadata for docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+2026-06-10T10:01:43.220Z [INFO] #3 ...
+2026-06-10T10:01:43.221Z [INFO] #4 [auth] nvidia/cuda:pull token for registry-1.docker.io
+2026-06-10T10:01:43.221Z [INFO] #4 DONE 0.0s
+2026-06-10T10:01:43.371Z [INFO] #3 [internal] load metadata for docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+2026-06-10T10:01:44.102Z [INFO] #3 DONE 1.5s
+2026-06-10T10:01:44.149Z [INFO] #5 [internal] load .dockerignore
+2026-06-10T10:01:44.149Z [INFO] #5 transferring context: 2B done
+2026-06-10T10:01:44.149Z [INFO] #5 DONE 0.0s
+2026-06-10T10:01:44.149Z [INFO] #6 [internal] load build context
+2026-06-10T10:01:44.149Z [INFO] #6 transferring context: 2B done
+2026-06-10T10:01:44.149Z [INFO] #6 DONE 0.0s
+2026-06-10T10:01:44.149Z [INFO] #7 [3/7] WORKDIR /app
+2026-06-10T10:01:44.149Z [INFO] #7 CACHED
+2026-06-10T10:01:44.149Z [INFO] #8 [5/7] WORKDIR /app/MisoTTS
+2026-06-10T10:01:44.149Z [INFO] #8 CACHED
+2026-06-10T10:01:44.149Z [INFO] #9 [4/7] RUN git clone --depth 1 https://github.com/MisoLabsAI/MisoTTS.git
+2026-06-10T10:01:44.149Z [INFO] #9 CACHED
+2026-06-10T10:01:44.149Z [INFO] #10 [6/7] RUN python -m pip install --no-cache-dir --upgrade pip     && pip install --no-cache-dir -r requirements.txt     && pip install --no-cache-dir runpod boto3
+2026-06-10T10:01:44.150Z [INFO] #10 CACHED
+2026-06-10T10:01:44.150Z [INFO] #11 [2/7] RUN apt-get update && apt-get install -y --no-install-recommends         git python3 python3-pip ffmpeg     && rm -rf /var/lib/apt/lists/*     && ln -sf /usr/bin/python3 /usr/bin/python
+2026-06-10T10:01:44.150Z [INFO] #11 CACHED
+2026-06-10T10:01:44.150Z [INFO] #12 [7/7] COPY handler.py /app/MisoTTS/handler.py
+2026-06-10T10:01:44.150Z [INFO] #12 ERROR: failed to calculate checksum of ref r6stg15fm53kd0645dex68bgw::4bphciqb4ez9c5c72riftgsi2: "/handler.py": not found
+2026-06-10T10:01:44.150Z [INFO] #13 [1/7] FROM docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04@sha256:2fcc4280646484290cc50dce5e65f388dd04352b07cbe89a635703bd1f9aedb6
+2026-06-10T10:01:44.150Z [INFO] #13 resolve docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04@sha256:2fcc4280646484290cc50dce5e65f388dd04352b07cbe89a635703bd1f9aedb6 done
+2026-06-10T10:01:44.150Z [INFO] #13 DONE 0.0s
+2026-06-10T10:01:44.150Z [INFO] ------
+2026-06-10T10:01:44.150Z [INFO]  > [7/7] COPY handler.py /app/MisoTTS/handler.py:
+2026-06-10T10:01:44.150Z [INFO] WARNING: current commit information was not captured by the build: git was not found in the system: exec: "git": executable file not found in $PATH
+2026-06-10T10:01:44.151Z [INFO] Dockerfile:18
+2026-06-10T10:01:44.151Z [INFO] --------------------
+2026-06-10T10:01:44.151Z [INFO]   16 |         && pip install --no-cache-dir runpod boto3
+2026-06-10T10:01:44.151Z [INFO]   17 |
+2026-06-10T10:01:44.151Z [INFO]   18 | >>> COPY handler.py /app/MisoTTS/handler.py
+2026-06-10T10:01:44.151Z [INFO]   19 |
+2026-06-10T10:01:44.151Z [INFO]   20 |     # Persist the ~16GB weights on a RunPod network volume so cold starts don't re-download.
+2026-06-10T10:01:44.152Z [ERROR] ERROR: failed to build: failed to solve: failed to compute cache key: failed to calculate checksum of ref r6stg15fm53kd0645dex68bgw::4bphciqb4ez9c5c72riftgsi2: "/handler.py": not found
+2026-06-10T10:01:44.252Z [ERROR] Build failed in the first attempt. Will retry one more time before exiting.
+2026-06-10T10:01:44.341Z [INFO] great_moser
+2026-06-10T10:01:44.486Z [INFO] #0 building with "great_moser" instance using docker-container driver
+2026-06-10T10:01:44.486Z [INFO] #1 [internal] booting buildkit
+2026-06-10T10:01:44.637Z [INFO] #1 pulling image moby/buildkit:v0.17.2
+2026-06-10T10:01:45.654Z [INFO] #1 pulling image moby/buildkit:v0.17.2 1.2s done
+2026-06-10T10:01:45.804Z [INFO] #1 creating container buildx_buildkit_great_moser0
+2026-06-10T10:01:47.225Z [INFO] #1 creating container buildx_buildkit_great_moser0 1.6s done
+2026-06-10T10:01:47.466Z [INFO] #1 DONE 2.7s
+2026-06-10T10:01:47.466Z [INFO] #2 [internal] load build definition from Dockerfile
+2026-06-10T10:01:47.466Z [INFO] #2 transferring dockerfile: 964B done
+2026-06-10T10:01:47.466Z [INFO] #2 DONE 0.0s
+2026-06-10T10:01:47.466Z [INFO] #3 [internal] load metadata for docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+2026-06-10T10:01:47.884Z [INFO] #3 ...
+2026-06-10T10:01:47.884Z [INFO] #4 [auth] nvidia/cuda:pull token for registry-1.docker.io
+2026-06-10T10:01:47.884Z [INFO] #4 DONE 0.0s
+2026-06-10T10:01:48.033Z [INFO] #3 [internal] load metadata for docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+2026-06-10T10:01:48.731Z [INFO] #3 DONE 1.4s
+2026-06-10T10:01:48.777Z [INFO] #5 [internal] load .dockerignore
+2026-06-10T10:01:48.777Z [INFO] #5 transferring context: 2B done
+2026-06-10T10:01:48.777Z [INFO] #5 DONE 0.0s
+2026-06-10T10:01:48.777Z [INFO] #6 [internal] load build context
+2026-06-10T10:01:48.777Z [INFO] #6 transferring context: 2B done
+2026-06-10T10:01:48.777Z [INFO] #6 DONE 0.0s
+2026-06-10T10:01:48.777Z [INFO] #7 [3/7] WORKDIR /app
+2026-06-10T10:01:48.777Z [INFO] #7 CACHED
+2026-06-10T10:01:48.777Z [INFO] #8 [2/7] RUN apt-get update && apt-get install -y --no-install-recommends         git python3 python3-pip ffmpeg     && rm -rf /var/lib/apt/lists/*     && ln -sf /usr/bin/python3 /usr/bin/python
+2026-06-10T10:01:48.777Z [INFO] #8 CACHED
+2026-06-10T10:01:48.777Z [INFO] #9 [4/7] RUN git clone --depth 1 https://github.com/MisoLabsAI/MisoTTS.git
+2026-06-10T10:01:48.777Z [INFO] #9 CACHED
+2026-06-10T10:01:48.777Z [INFO] #10 [5/7] WORKDIR /app/MisoTTS
+2026-06-10T10:01:48.777Z [INFO] #10 CACHED
+2026-06-10T10:01:48.777Z [INFO] #11 [6/7] RUN python -m pip install --no-cache-dir --upgrade pip     && pip install --no-cache-dir -r requirements.txt     && pip install --no-cache-dir runpod boto3
+2026-06-10T10:01:48.777Z [INFO] #11 CACHED
+2026-06-10T10:01:48.777Z [INFO] #12 [7/7] COPY handler.py /app/MisoTTS/handler.py
+2026-06-10T10:01:48.777Z [INFO] #12 ERROR: failed to calculate checksum of ref bru76neen3xptnbclrnmf0qcx::ws0ovm9g0glx8wdhncyy3xiub: "/handler.py": not found
+2026-06-10T10:01:48.777Z [INFO] #13 [1/7] FROM docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04@sha256:2fcc4280646484290cc50dce5e65f388dd04352b07cbe89a635703bd1f9aedb6
+2026-06-10T10:01:48.777Z [INFO] #13 resolve docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04@sha256:2fcc4280646484290cc50dce5e65f388dd04352b07cbe89a635703bd1f9aedb6 done
+2026-06-10T10:01:48.777Z [INFO] #13 DONE 0.0s
+2026-06-10T10:01:48.777Z [INFO] ------
+2026-06-10T10:01:48.777Z [INFO]  > [7/7] COPY handler.py /app/MisoTTS/handler.py:
+2026-06-10T10:01:48.777Z [INFO] WARNING: current commit information was not captured by the build: git was not found in the system: exec: "git": executable file not found in $PATH
+2026-06-10T10:01:48.778Z [INFO] Dockerfile:18
+2026-06-10T10:01:48.778Z [INFO] --------------------
+2026-06-10T10:01:48.778Z [INFO]   16 |         && pip install --no-cache-dir runpod boto3
+2026-06-10T10:01:48.778Z [INFO]   17 |
+2026-06-10T10:01:48.778Z [INFO]   18 | >>> COPY handler.py /app/MisoTTS/handler.py
+2026-06-10T10:01:48.778Z [INFO]   19 |
+2026-06-10T10:01:48.778Z [INFO]   20 |     # Persist the ~16GB weights on a RunPod network volume so cold starts don't re-download.
+2026-06-10T10:01:48.804Z [ERROR] ERROR: failed to build: failed to solve: failed to compute cache key: failed to calculate checksum of ref bru76neen3xptnbclrnmf0qcx::ws0ovm9g0glx8wdhncyy3xiub: "/handler.py": not found
+2026-06-10T10:01:48.884Z [ERROR] Build finished with wrong exit code: Please view the logs to find out what went wrong.
+2026-06-10T10:01:48.928Z [ERROR] None
+None

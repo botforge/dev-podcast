@@ -1,24 +1,22 @@
-# MISO 8B runs here, on RunPod's GPU. Build via RunPod's GitHub integration --
-# no local Docker needed. Ubuntu 22.04's default python3 is 3.10 (what MisoTTS wants).
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+# MISO 8B runs here on RunPod's GPU. Built by RunPod's GitHub integration -- no local Docker.
+# Base off the official PyTorch image: torch 2.4.0 + CUDA are already inside, so the build
+# skips the slow from-scratch torch/CUDA install (the thing that wedged the first build).
+FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime
 
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        git python3 python3-pip ffmpeg \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/python3 /usr/bin/python
+ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
+RUN apt-get update && apt-get install -y --no-install-recommends git ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 RUN git clone --depth 1 https://github.com/MisoLabsAI/MisoTTS.git
 WORKDIR /app/MisoTTS
-RUN python -m pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt \
+# torch==2.4.0 in requirements is already satisfied by the base image -> pip skips it.
+RUN pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir runpod boto3
 
 COPY handler.py /app/MisoTTS/handler.py
 
-# Persist the ~16GB weights on a RunPod network volume so cold starts don't re-download.
+# Persist the ~16GB weights on the attached network volume so cold starts don't re-download.
 ENV HF_HOME=/runpod-volume/hf
-ENV PYTHONUNBUFFERED=1
 
 CMD ["python", "-u", "handler.py"]
