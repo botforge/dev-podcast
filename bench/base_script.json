@@ -1,0 +1,15 @@
+{
+  "name": "bench_desmume_opening",
+  "turns": [
+    {
+      "speaker_id": 1,
+      "text": "Okay so I'm coming into this completely cold. I know it's a Nintendo DS emulator and that's about it. If you had to tell me one story about how this thing is actually built, the story that would teach me the most, what would it be?",
+      "segment_type": "open"
+    },
+    {
+      "speaker_id": 0,
+      "text": "Alright, here's the one story I'd tell. Picture the Nintendo DS as a tiny machine with two brains inside, not one. There's a fast brain, the ARM9, that runs the game logic, and a slower helper brain, the ARM7, that handles sound and WiFi and the touchscreen.",
+      "segment_type": "story"
+    }
+  ]
+}
