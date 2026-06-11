@@ -1,0 +1,64 @@
+JUNIOR [open]: Okay, I'm coming into this totally cold. So let me just ask the obvious thing: if you had to tell me one story about how this repo is actually built, the thing that would teach me the most about how it hangs together, what would it be?
+
+SENIOR [story]: Alright, here's the story I'd tell.
+
+Picture a Nintendo DS as a tiny machine with two brains: an ARM9 doing the heavy lifting, an ARM7 handling sound and Wi-Fi, talking to each other through shared memory. DeSmuME exists to fake that machine in software so well that a real game ROM can't tell the difference.
+
+So the whole repo is built around one idea: a portable core that pretends to be the DS hardware, wrapped by swappable frontends. At the center sits `NDSSystem`. It owns the two emulated CPUs, an `MMU` that routes every memory read and write to the right chunk of fake hardware, a `GPU` for the two screens, and an `SPU` for sound. You step it forward with `desmume_cycle()`.
+
+Then Windows, GTK, Cocoa, and a CLI all bolt onto that same core. Learn the core, you've got the whole thing.
+
+What do you want to pull on first?
+
+JUNIOR [recap]: Let me make sure I've got the shape of this before I dig in.
+
+So the DS itself is two CPUs sharing memory, an ARM9 and an ARM7, and the emulator's whole job is to imitate that hardware closely enough that a real ROM just runs, none the wiser. The code mirrors that: there's a central `NDSSystem` that's basically the virtual machine, and it owns the pieces that correspond to real chips. Two emulated CPUs, an `MMU` that's the traffic cop for every memory access, a `GPU` for the screens, an `SPU` for sound. And you drive the whole thing forward in time by calling something like `desmume_cycle()`, which I'm guessing advances the emulation by some unit of work.
+
+And then the clever separation is that all the platform-specific stuff, the Windows build, GTK, Cocoa, the command line, those are just frontends that sit on top of that same shared core. The core doesn't know or care which one is driving it.
+
+Is that right? And one thing I want to check on: when you say the `MMU` "routes every memory read and write to the right
+
+SENIOR [quiz_q]: Yeah, you've got the shape exactly right. Nice recap.
+
+Let me flip one on you before we go deeper. When a game does a memory read, say it reads from some address, why would the emulator need an `MMU` to "route" that at all? Why can't it just read from one big array that represents the DS's memory?
+
+JUNIOR [quiz_a]: Let me reason through it. On real hardware, not every address is actually memory. The DS has main RAM, sure, but it also has a chunk of the address space that's really hardware registers. Like, writing to a particular address doesn't store a byte, it tells the GPU to change a setting, or kicks off a DMA transfer, or sets a timer. So the address space is a map of devices, not just one flat array of bytes.
+
+If you backed it with one big array, a read would just hand you back whatever byte was last written there, but that's wrong for those special addresses. Reading a register might need to give you live status, like "is this hardware busy right now," which no plain array knows. And a write to a register address has to actually *do* something, trigger a side effect, not just sit there.
+
+So the `MMU` is the thing that looks at the address and decides: is this real RAM, in which case go to the array, or is this a hardware register, in which case dispatch to the GPU or SPU or timer code that knows what that poke is supposed to mean.
+
+Am I close? And I'd guess there's a second reason too, something about the two CPUs not even seeing the
+
+SENIOR [quiz_eval]: Spot on. That's exactly why a flat array doesn't cut it: writes to register addresses have side effects, and reads can return live hardware state.
+
+And yes, your instinct about the second reason is right. The ARM9 and ARM7 don't see the same map. Let me verify the specifics rather than wing it.
+Good, that confirms it cleanly. The MMU literally keeps it all indexed by CPU.
+
+The key data structures: `MMU_struct::MMU_MEM` is a two-dimensional table indexed by `[CPU][addrhigh]`, where CPU is `ARMCPU_ARM9` (0) or `ARMCPU_ARM7` (1). There's a parallel `MMU_MASK` for address masking. And the access functions come in matched pairs, `_MMU_ARM9_write08` versus `_MMU_ARM7_write08`, and so on for each size.
+
+So your guess was right: the two CPUs don't share a memory map. Concretely:
+
+- The ARM7 has its own BIOS, its own work RAM (`WIRAM`), plus the WLAN and a lot of the sound registers.
+- The ARM9 has fast on-chip caches called TCM (instruction and data), its own BIOS, and owns the GPU and 3D registers.
+- They share main memory (the `2X` region), a shared WRAM block, and VRAM.
+
+That last one, VRAM, is the spicy one. It's not statically mapped. There's a function `MMU_VRAMmapRefreshBank` that reconfigures where the VRAM banks live based on control registers the game writes, so the same physical VRAM can be background graphics one moment and a 3D texture the next.
+
+Want
+
+JUNIOR [recap]: Let me play the whole thing back and see if it holds together now.
+
+So the DS is two CPUs, ARM9 and ARM7, and the emulator's job is to fake the hardware well enough that a ROM can't tell. The core of that is `NDSSystem`, the virtual machine, and it owns the emulated CPUs, the GPU, the SPU, and the MMU.
+
+The MMU is the piece I now actually get. The reason it exists is that "memory" on the DS isn't one array, it's a map of devices. Some addresses are real RAM, some are hardware registers where a write *does something* and a read gives you *live state*. So the MMU's job is to look at an address and dispatch: array, or device code.
+
+And then the second layer is that each CPU has its *own* map. That's why the data structure is two-dimensional, `MMU_MEM[CPU][addrhigh]`. The CPU index comes first because the very same address can mean different things depending on who's asking. ARM7 looks up an address and lands in its own BIOS or its sound registers, ARM9 looks up the same address and might land in
+
+SENIOR [close]: Yeah, that holds together completely. The MMU is two-dimensional because the CPU is part of the address: same number, different device, depending on who's asking. ARM7 lands in its BIOS or sound regs, ARM9 lands in its TCM or GPU regs, and they only overlap where the hardware genuinely shares silicon, main RAM and VRAM. You nailed it.
+
+And honestly, that's the whole mental model right there. Once you see `NDSSystem` as the machine and the MMU as the traffic cop that knows who's driving, the GPU and SPU are just two more devices hanging off that dispatch, and the frontends are just things turning the crank on `desmume_cycle()`. Everything else is detail you can hang on those hooks.
+
+Great instincts today, by the way. You were guessing the second reason before I even said it, and that's exactly how you read an emulator: ask what the real hardware had to do, and the code usually mirrors it.
+
+That's a good place to wrap. Next time we'll pick a single device, probably the GPU and that VRAM bank-switching trick, and trace one frame end to end. Thanks for listening, and we'll catch you on the next one.

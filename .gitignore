@@ -9,3 +9,5 @@ out/
 # keep reference voice clips (override the *.wav ignore)
 !runpod/voices/
 !runpod/voices/*.wav
+
+!baselines/
