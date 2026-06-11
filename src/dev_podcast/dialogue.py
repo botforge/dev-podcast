@@ -93,37 +93,41 @@ class Dialogue:
                 f"You can query the DeepWiki knowledge tool for the GitHub repository "
                 f"`{self.cfg.repo}`. Use it to answer grounded in the real code."
             ),
-            messages=[{"role": "user", "content": question}],
         )
-        resp = self._beta_create(**kw)
-        while resp.stop_reason == "pause_turn":
-            kw["messages"] = [
-                {"role": "user", "content": question},
-                {"role": "assistant", "content": resp.content},
-            ]
-            resp = self._beta_create(**kw)
+        # Server-side MCP tools may pause; APPEND each continuation (don't replace) and
+        # cap the loop so a large wiki can't spin forever.
+        msgs = [{"role": "user", "content": question}]
+        resp = self._beta_create(messages=msgs, **kw)
+        guard = 0
+        while resp.stop_reason == "pause_turn" and guard < 8:
+            guard += 1
+            msgs.append({"role": "assistant", "content": resp.content})
+            resp = self._beta_create(messages=msgs, **kw)
         return _text_of(resp.content)
 
-    def build_seed_and_wiki(self) -> tuple[str, str]:
+    def _build_seed(self) -> str:
+        """Fast, small query for the student's framing -- on the critical path."""
         try:
-            seed = self._ask_deepwiki(
+            return self._ask_deepwiki(
                 "In 2-3 sentences, give a newcomer the high-level pitch of this repo: what "
                 "it is, what problem it solves, and the single most interesting thing about "
                 "how it's built. Plain prose, no headings.",
-                max_tokens=1000,
+                max_tokens=700,
             )
         except anthropic.APIError:
-            seed = ""
+            return ""
+
+    def _build_wiki(self) -> str:
+        """Bonus deliverable -- generated AFTER the dialogue so turns stream first."""
         try:
-            wiki = self._ask_deepwiki(
+            return self._ask_deepwiki(
                 "Produce a concise markdown wiki of this repo for an engineer: an "
                 "architecture overview, the key modules and what each does, and the 2-3 "
                 "most important runtime flows. Use headings and bullet points.",
                 max_tokens=6000,
             )
         except anthropic.APIError:
-            wiki = ""  # best-effort deliverable; don't sink the whole episode
-        return seed, wiki
+            return ""
 
     # --- the two agents -------------------------------------------------------
 
@@ -184,7 +188,8 @@ class Dialogue:
         return sum(len(t.text.split()) for t in self.turns)
 
     def run(self) -> list[Turn]:
-        self._seed, self._wiki = self.build_seed_and_wiki()
+        self._seed = self._build_seed()   # fast: needed for the student's opening
+        self._wiki = ""                   # generated at the end so turns stream first
 
         target_words = self.cfg.episode.target_minutes * WORDS_PER_MINUTE
         testing = max(self.cfg.teacher.testing_inclination, self.cfg.student.testing_appetite)
@@ -247,6 +252,7 @@ class Dialogue:
                 self._teacher_turn(director=note, segment="dialogue")
                 next_speaker = STUDENT
 
+        self._wiki = self._build_wiki()   # bonus deliverable, after the dialogue
         return self.turns
 
     # --- output ---------------------------------------------------------------
