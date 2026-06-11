@@ -34,16 +34,25 @@ def _ensure_weights():
 
 def _ensure_server():
     global _proc
+    log_path = "/tmp/fish_server.log"
     if _proc is None:
         _ensure_weights()
         print("[boot] starting fish api_server ...", flush=True)
+        logf = open(log_path, "wb")
         _proc = subprocess.Popen(
             ["python", "tools/api_server.py",
              "--llama-checkpoint-path", CKPT,
              "--decoder-checkpoint-path", os.path.join(CKPT, "codec.pth"),
              "--listen", f"127.0.0.1:{PORT}"],
-            cwd="/app/fish-speech",
+            cwd="/app/fish-speech", stdout=logf, stderr=subprocess.STDOUT,
         )
+
+    def _logtail():
+        try:
+            return open(log_path).read()[-1500:]
+        except Exception:
+            return "(no log)"
+
     import ormsgpack
     probe = ormsgpack.packb({"text": "ready", "references": [], "format": "wav", "streaming": False})
     for _ in range(300):  # up to ~10 min for model load
@@ -56,9 +65,9 @@ def _ensure_server():
             return  # server answered (even an error) -> it's up
         except Exception:
             if _proc.poll() is not None:
-                raise RuntimeError("fish api_server exited during startup")
+                raise RuntimeError(f"fish api_server exited (code {_proc.returncode}). log:\n{_logtail()}")
             time.sleep(2)
-    raise RuntimeError("fish api_server never became ready")
+    raise RuntimeError(f"fish api_server never became ready. log:\n{_logtail()}")
 
 
 def _tts(text, audio_bytes, ref_text) -> bytes:
