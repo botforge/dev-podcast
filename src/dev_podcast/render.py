@@ -41,14 +41,31 @@ def _req(url: str, key: str, body: dict | None = None, retries: int = 4) -> dict
             time.sleep(2 * (i + 1))
 
 
-def render(script_path: Path, out_wav: Path | None, poll: int = 5, timeout: int = 2400) -> dict:
+def _voice_refs(voices_dir: Path | None) -> list | None:
+    """Read senior/junior reference clips (wav + matching .txt) and base64-encode them."""
+    if not voices_dir:
+        return None
+    import base64
+    refs = []
+    for spk, who in ((0, "senior"), (1, "junior")):
+        wav, txt = voices_dir / f"{who}.wav", voices_dir / f"{who}.txt"
+        refs.append({"speaker_id": spk, "text": txt.read_text().strip(),
+                     "audio_b64": base64.b64encode(wav.read_bytes()).decode()})
+    return refs
+
+
+def render(script_path: Path, out_wav: Path | None, refs: list | None = None,
+           poll: int = 5, timeout: int = 2400) -> dict:
     key = os.environ["RUNPOD_API_KEY"]
     endpoint = os.environ["RUNPOD_ENDPOINT_ID"]
     script = json.loads(script_path.read_text())
     name = script.get("repo", "episode").replace("/", "__")
 
+    inp = {"turns": script["turns"], "name": name}
+    if refs:
+        inp["refs"] = refs
     print(f"Submitting {len(script['turns'])} turns to RunPod endpoint {endpoint} ...")
-    job = _req(f"{API}/{endpoint}/run", key, {"input": {"turns": script["turns"], "name": name}})
+    job = _req(f"{API}/{endpoint}/run", key, {"input": inp})
     job_id = job["id"]
     print(f"job: {job_id}  (first run cold-starts the model -- can take a few minutes)")
 
@@ -90,7 +107,8 @@ def _stitch(in_paths: list[Path], out_path: Path, gap_ms: int = 200) -> float:
     return total / (nch * sw * sr)
 
 
-def render_parallel(script_path: Path, out_wav: Path | None, poll: int = 5, timeout: int = 3600) -> dict:
+def render_parallel(script_path: Path, out_wav: Path | None, refs: list | None = None,
+                    poll: int = 5, timeout: int = 3600) -> dict:
     """Render every turn as its own RunPod job (refs-only context, independent),
     in parallel across workers, then stitch the WAVs in order."""
     key = os.environ["RUNPOD_API_KEY"]
@@ -103,7 +121,10 @@ def render_parallel(script_path: Path, out_wav: Path | None, poll: int = 5, time
     jobs = []  # (index, job_id, name)
     for i, t in enumerate(turns):
         name = f"{base}__t{i:03d}"
-        j = _req(f"{API}/{endpoint}/run", key, {"input": {"turns": [t], "name": name}})
+        inp = {"turns": [t], "name": name}
+        if refs:
+            inp["refs"] = refs
+        j = _req(f"{API}/{endpoint}/run", key, {"input": inp})
         jobs.append((i, j["id"], name))
 
     pending = {jid: i for i, jid, _ in jobs}
@@ -146,11 +167,14 @@ def main() -> int:
     p.add_argument("script", type=Path, help="path to a script.json")
     p.add_argument("--out", type=Path, default=None, help="output .wav (default: alongside script.json)")
     p.add_argument("--parallel", action="store_true", help="render each turn as its own job, in parallel (fast)")
+    p.add_argument("--voices", type=Path, default=None,
+                   help="dir with senior.wav/.txt + junior.wav/.txt to use as reference voices")
     args = p.parse_args()
     for var in ("RUNPOD_API_KEY", "RUNPOD_ENDPOINT_ID"):
         if not os.getenv(var):
             raise SystemExit(f"missing {var} in .env")
-    (render_parallel if args.parallel else render)(args.script, args.out)
+    refs = _voice_refs(args.voices)
+    (render_parallel if args.parallel else render)(args.script, args.out, refs=refs)
     return 0
 
 

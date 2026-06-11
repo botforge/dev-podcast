@@ -50,23 +50,43 @@ def _get_generator():
     return _generator
 
 
+def _wav_to_seg(gen, wav, sr, speaker, text):
+    import torchaudio
+    from generator import Segment
+    wav = wav.mean(dim=0) if wav.dim() > 1 else wav
+    if sr != gen.sample_rate:
+        wav = torchaudio.functional.resample(wav, sr, gen.sample_rate)
+    return Segment(text=text, speaker=int(speaker), audio=wav)
+
+
 def _load_refs(gen):
-    """Load the two reference clips as Segments (resampled to the model's rate)."""
+    """Default baked reference clips (used when the job doesn't supply its own)."""
     global _refs
     if _refs is None:
         import torchaudio
-        from generator import Segment
         here = os.path.dirname(os.path.abspath(__file__))
         segs = {}
         for spk, (rel, text) in REF_VOICES.items():
             wav, sr = torchaudio.load(os.path.join(here, rel))
-            wav = wav.mean(dim=0)  # to mono [time]
-            if sr != gen.sample_rate:
-                wav = torchaudio.functional.resample(wav, sr, gen.sample_rate)
-            segs[spk] = Segment(text=text, speaker=spk, audio=wav)
-            print(f"[refs] speaker {spk}: {wav.shape[0] / gen.sample_rate:.1f}s", flush=True)
+            segs[spk] = _wav_to_seg(gen, wav, sr, spk, text)
         _refs = segs
     return _refs
+
+
+def _refs_from_input(gen, refs_in):
+    """Per-job reference clips: [{speaker_id, audio_b64 (wav), text}, ...]."""
+    import base64
+    import tempfile
+    import torchaudio
+    segs = {}
+    for r in refs_in:
+        path = os.path.join(tempfile.gettempdir(), f"ref_{r['speaker_id']}.wav")
+        with open(path, "wb") as f:
+            f.write(base64.b64decode(r["audio_b64"]))
+        wav, sr = torchaudio.load(path)
+        segs[int(r["speaker_id"])] = _wav_to_seg(gen, wav, sr, r["speaker_id"], r.get("text", ""))
+        print(f"[refs] job speaker {r['speaker_id']}: {segs[int(r['speaker_id'])].audio.shape[0]/gen.sample_rate:.1f}s", flush=True)
+    return segs
 
 
 def _max_ms(text: str) -> int:
@@ -87,10 +107,9 @@ def _context(refs, segments, sr):
     return ctx + list(reversed(recent))
 
 
-def _render(gen, turns):
+def _render(gen, turns, refs):
     import torch
     from generator import Segment
-    refs = _load_refs(gen)
     segments = []
     for i, t in enumerate(turns):
         spk = int(t["speaker_id"])
@@ -131,7 +150,9 @@ def handler(job):
         name = (inp.get("name") or f"episode-{int(time.time())}").replace("/", "__")
 
         gen = _get_generator()
-        audio = _render(gen, turns)
+        refs_in = inp.get("refs")
+        refs = _refs_from_input(gen, refs_in) if refs_in else _load_refs(gen)
+        audio = _render(gen, turns, refs)
 
         path = os.path.join(tempfile.gettempdir(), f"{name}.wav")
         torchaudio.save(path, audio.unsqueeze(0).cpu(), gen.sample_rate)
