@@ -29,6 +29,10 @@ WORDS_PER_MINUTE = 150
 MCP_BETA = "mcp-client-2025-11-20"
 DEEPWIKI = {"type": "url", "name": "deepwiki", "url": "https://mcp.deepwiki.com/mcp"}
 DEEPWIKI_TOOLS = [{"type": "mcp_toolset", "mcp_server_name": "deepwiki"}]
+# Teacher also gets web search, to pull design-decision insight from textbooks / blogs /
+# StackOverflow / Reddit / Discord, not just the repo wiki.
+WEB_SEARCH = {"type": "web_search_20260209", "name": "web_search"}
+TEACHER_TOOLS = DEEPWIKI_TOOLS + [WEB_SEARCH]
 
 TEACHER = 0  # speaker_id -- senior
 STUDENT = 1  # speaker_id -- junior
@@ -131,13 +135,13 @@ class Dialogue:
 
     # --- the two agents -------------------------------------------------------
 
-    def _student_turn(self, director: str | None, segment: str) -> Turn:
+    def _student_turn(self, director: str | None, segment: str, max_tokens: int = 800) -> Turn:
         msgs = list(self.student_msgs)
         if director:
             msgs.append({"role": "user", "content": f"[director note, not spoken: {director}]"})
         resp = self.client.messages.create(
             model=MODEL,
-            max_tokens=350,  # a turn is 1-3 sentences, not an essay
+            max_tokens=max_tokens,  # generous so answers/recaps don't get cut off
             thinking={"type": "disabled"},  # curiosity, not deep reasoning -- keep it snappy
             system=self.cfg.student.preamble(self.cfg.repo, self._seed, self.cfg.episode.tone),
             messages=msgs,
@@ -146,7 +150,7 @@ class Dialogue:
         self._record(STUDENT, text, segment)
         return self.turns[-1]
 
-    def _teacher_turn(self, director: str | None, segment: str, max_tokens: int = 450) -> Turn:
+    def _teacher_turn(self, director: str | None, segment: str, max_tokens: int = 700) -> Turn:
         msgs = list(self.teacher_msgs)
         if director:
             msgs.append({"role": "user", "content": f"[director note, not spoken: {director}]"})
@@ -155,11 +159,13 @@ class Dialogue:
                       output_config={"effort": "medium"}, system=system)
         try:
             resp = self._beta_create(betas=[MCP_BETA], mcp_servers=[DEEPWIKI],
-                                     tools=DEEPWIKI_TOOLS, messages=msgs, **common)
-            while resp.stop_reason == "pause_turn":
+                                     tools=TEACHER_TOOLS, messages=msgs, **common)
+            guard = 0
+            while resp.stop_reason == "pause_turn" and guard < 8:
+                guard += 1
                 msgs.append({"role": "assistant", "content": resp.content})
                 resp = self._beta_create(betas=[MCP_BETA], mcp_servers=[DEEPWIKI],
-                                         tools=DEEPWIKI_TOOLS, messages=msgs, **common)
+                                         tools=TEACHER_TOOLS, messages=msgs, **common)
         except anthropic.APIError:
             # DeepWiki unavailable -> let the senior answer from the conversation so far.
             resp = self.client.messages.create(messages=msgs, **common)
@@ -187,20 +193,38 @@ class Dialogue:
     def _word_count(self) -> int:
         return sum(len(t.text.split()) for t in self.turns)
 
+    def _concluded(self) -> bool:
+        """Lightweight judge: has the conversation reached a natural, satisfying end?"""
+        recent = "\n".join(
+            f"{'SENIOR' if t.speaker_id == TEACHER else 'JUNIOR'}: {t.text}"
+            for t in self.turns[-8:]
+        )
+        try:
+            r = self.client.messages.create(
+                model=MODEL, max_tokens=5, thinking={"type": "disabled"},
+                system="You judge a learning conversation. Reply with exactly YES or NO.",
+                messages=[{"role": "user", "content": (
+                    f"Recent conversation:\n{recent}\n\nHas the junior reached a genuine, "
+                    "satisfying intuition for WHY the key design decisions were made, to the "
+                    "point they could plausibly have derived them themselves, and the "
+                    "conversation has run its natural course? Reply YES or NO."
+                )}],
+            )
+            return "YES" in _text_of(r.content).upper()
+        except anthropic.APIError:
+            return False
+
     def run(self) -> list[Turn]:
         self._seed = self._build_seed()   # fast: needed for the student's opening
         self._wiki = ""                   # generated at the end so turns stream first
 
-        target_words = self.cfg.episode.target_minutes * WORDS_PER_MINUTE
+        # Open-ended length: no fixed minutes/turns target. It runs until a natural
+        # conclusion (judged), with a generous safety cap.
+        MIN_TURNS = 16   # don't even consider ending before this
+        MAX_TURNS = 90   # hard safety cap
         testing = max(self.cfg.teacher.testing_inclination, self.cfg.student.testing_appetite)
-        n_quizzes = round(testing * 3)  # 0..3 check-ins across the episode
-        quiz_marks = (
-            [round(target_words * (i + 1) / (n_quizzes + 1)) for i in range(n_quizzes)]
-            if n_quizzes else []
-        )
-        # Student re-explains the context a couple of times across the episode.
-        n_recaps = 2
-        recap_marks = [round(target_words * (i + 1) / (n_recaps + 1)) for i in range(n_recaps)]
+        quiz_marks = list(range(12, MAX_TURNS, 10)) if testing >= 0.4 else []
+        recap_marks = list(range(8, MAX_TURNS, 10))   # the student replays often (loved beat)
 
         # 1) Student opens with the configured starting point.
         sp = self.cfg.episode.starting_point
@@ -210,46 +234,44 @@ class Dialogue:
         )})
         self._student_turn(director=None, segment="open")
 
-        # 2) Teacher opens with a short storytelling lecture (~1 min) from first principles.
+        # 2) Teacher opens with a short storytelling lecture from first principles.
         self._teacher_turn(
             director="this is the OPENING. Explain the shit about this repo as a short story "
-                     "from first principles, 3Blue1Brown / Khan Academy style. Take up to "
-                     "about a minute (~130 words): what it is, why it exists, and the single "
-                     "most useful story of how it's built. Then we go into back-and-forth.",
-            segment="story", max_tokens=700,
+                     "from first principles, 3Blue1Brown / Khan Academy style: what it is, why "
+                     "it exists, and the single most useful story of how it's built and WHY it "
+                     "ended up that way. Then we go into back-and-forth.",
+            segment="story", max_tokens=1000,
         )
 
-        # 3) Back-and-forth, with periodic quiz + student-recap checkpoints.
+        # 3) Back-and-forth, ending on a judged natural conclusion (or the safety cap).
         next_speaker = STUDENT
         while True:
-            wc = self._word_count
+            n = len(self.turns)
 
-            if wc >= target_words and next_speaker == STUDENT:
-                self._student_turn(director="re-explain the whole thing back in your own words, then say what finally clicked.", segment="recap")
-                self._teacher_turn(director="confirm or correct the recap, then bring the episode to a natural close and sign off.", segment="close")
+            if next_speaker == STUDENT and n >= MIN_TURNS and (n >= MAX_TURNS or self._concluded()):
+                self._student_turn(director="play the WHOLE thing back in your own words, the why behind each big decision, then say what finally clicked and that you feel you could have derived it yourself.", segment="recap", max_tokens=1400)
+                self._teacher_turn(director="validate the recap warmly, correct anything off, then bring the episode to a natural close and sign off.", segment="close")
                 break
 
-            if recap_marks and wc >= recap_marks[0] and next_speaker == STUDENT:
+            if recap_marks and n >= recap_marks[0] and next_speaker == STUDENT:
                 recap_marks.pop(0)
-                self._student_turn(director="pause and re-explain, in your own words, what you understand so far; check your mental model and invite correction.", segment="recap")
+                self._student_turn(director="pause and play it back: re-explain in your own words the story so far and WHY the decisions were made, then ask if it holds together.", segment="recap", max_tokens=1200)
                 next_speaker = TEACHER
                 continue
 
-            if quiz_marks and wc >= quiz_marks[0] and next_speaker == TEACHER:
+            if quiz_marks and n >= quiz_marks[0] and next_speaker == TEACHER:
                 quiz_marks.pop(0)
-                self._teacher_turn(director="pose ONE short question to test the junior's understanding so far, then wait.", segment="quiz_q")
-                self._student_turn(director="answer the senior's quiz question; attempt it for real.", segment="quiz_a")
-                self._teacher_turn(director="evaluate the answer in 1-2 sentences, then move on.", segment="quiz_eval")
+                self._teacher_turn(director="pose ONE short question that tests whether the junior could have predicted a design decision, then wait.", segment="quiz_q")
+                self._student_turn(director="answer the quiz for real, reasoning from first principles; take the space you need.", segment="quiz_a", max_tokens=1400)
+                self._teacher_turn(director="validate or correct in a couple of sentences, then move on.", segment="quiz_eval")
                 next_speaker = STUDENT
                 continue
 
-            note = ("we're near time -- start steering toward a wrap-up and consensus."
-                    if wc >= 0.85 * target_words else None)
             if next_speaker == STUDENT:
-                self._student_turn(director=note, segment="dialogue")
+                self._student_turn(director=None, segment="dialogue")
                 next_speaker = TEACHER
             else:
-                self._teacher_turn(director=note, segment="dialogue")
+                self._teacher_turn(director=None, segment="dialogue")
                 next_speaker = STUDENT
 
         self._wiki = self._build_wiki()   # bonus deliverable, after the dialogue

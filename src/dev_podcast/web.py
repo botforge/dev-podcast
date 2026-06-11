@@ -31,7 +31,7 @@ app = Flask(__name__)
 JOBS: dict[str, dict] = {}
 OUT = Path("out")
 
-STUDENT_SLIDERS = ["pace", "depth", "testing_appetite", "assertiveness", "tangents"]
+STUDENT_SLIDERS = ["prior_knowledge", "pace", "depth", "testing_appetite", "assertiveness", "tangents"]
 TEACHER_SLIDERS = ["directness", "conciseness", "rigor", "encouragement", "testing_inclination"]
 
 
