@@ -7,11 +7,13 @@ dependencies = [
     "anthropic>=0.69",
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
+    "flask>=3.0",
 ]
 
 [project.scripts]
 dev-podcast = "dev_podcast.__main__:main"
 dev-podcast-render = "dev_podcast.render:main"
+dev-podcast-web = "dev_podcast.web:main"
 
 [build-system]
 requires = ["hatchling"]

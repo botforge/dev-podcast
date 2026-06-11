@@ -46,10 +46,21 @@ def _text_of(content) -> str:
     return "\n".join(b.text for b in content if getattr(b, "type", None) == "text").strip()
 
 
+def _clean(text: str) -> str:
+    """Strip em/en dashes (an LLM tell, and awkward for TTS) and tidy whitespace."""
+    text = text.replace(" — ", ", ").replace("—", ", ").replace("–", "-")
+    text = text.replace(" , ", ", ").replace(" ,", ",")
+    while "  " in text:
+        text = text.replace("  ", " ")
+    return text.strip()
+
+
 class Dialogue:
-    def __init__(self, config: PodcastConfig, client: anthropic.Anthropic | None = None):
+    def __init__(self, config: PodcastConfig, client: anthropic.Anthropic | None = None,
+                 on_turn=None):
         self.cfg = config
         self.client = client or anthropic.Anthropic()
+        self.on_turn = on_turn  # optional callback(Turn) -- used to stream turns to a UI
         self.turns: list[Turn] = []
         # Mirrored histories: each agent sees its own turns as "assistant",
         # the other agent's as "user".
@@ -131,12 +142,12 @@ class Dialogue:
         self._record(STUDENT, text, segment)
         return self.turns[-1]
 
-    def _teacher_turn(self, director: str | None, segment: str) -> Turn:
+    def _teacher_turn(self, director: str | None, segment: str, max_tokens: int = 450) -> Turn:
         msgs = list(self.teacher_msgs)
         if director:
             msgs.append({"role": "user", "content": f"[director note, not spoken: {director}]"})
         system = self.cfg.teacher.preamble(self.cfg.repo, self.cfg.episode.tone)
-        common = dict(model=MODEL, max_tokens=450, thinking={"type": "adaptive"},
+        common = dict(model=MODEL, max_tokens=max_tokens, thinking={"type": "adaptive"},
                       output_config={"effort": "medium"}, system=system)
         try:
             resp = self._beta_create(betas=[MCP_BETA], mcp_servers=[DEEPWIKI],
@@ -153,7 +164,9 @@ class Dialogue:
         return self.turns[-1]
 
     def _record(self, speaker_id: int, text: str, segment: str) -> None:
-        self.turns.append(Turn(speaker_id, text, segment))
+        text = _clean(text)
+        turn = Turn(speaker_id, text, segment)
+        self.turns.append(turn)
         # Append to both histories as plain text (we don't re-send MCP tool blocks).
         if speaker_id == TEACHER:
             self.teacher_msgs.append({"role": "assistant", "content": text})
@@ -161,6 +174,8 @@ class Dialogue:
         else:
             self.student_msgs.append({"role": "assistant", "content": text})
             self.teacher_msgs.append({"role": "user", "content": text})
+        if self.on_turn:
+            self.on_turn(turn)
 
     # --- orchestration (routing + length + nudges only; no content) ----------
 
@@ -178,23 +193,42 @@ class Dialogue:
             [round(target_words * (i + 1) / (n_quizzes + 1)) for i in range(n_quizzes)]
             if n_quizzes else []
         )
+        # Student re-explains the context a couple of times across the episode.
+        n_recaps = 2
+        recap_marks = [round(target_words * (i + 1) / (n_recaps + 1)) for i in range(n_recaps)]
 
-        # Student opens (drives). Prime its history with a kickoff director note.
+        # 1) Student opens with the configured starting point.
+        sp = self.cfg.episode.starting_point
         self.student_msgs.append({"role": "user", "content": (
-            "[director note, not spoken: you're live. Open the episode -- introduce what "
-            "you're here to understand and ask your first real question.]"
+            "[director note, not spoken: you're live. Open the episode by asking, in your "
+            f"own natural voice, essentially this: \"{sp}\"]"
         )})
         self._student_turn(director=None, segment="open")
 
-        # Alternate one turn at a time so quiz breaks land cleanly after a Student turn.
-        next_speaker = TEACHER
+        # 2) Teacher opens with a short storytelling lecture (~1 min) from first principles.
+        self._teacher_turn(
+            director="this is the OPENING. Explain the shit about this repo as a short story "
+                     "from first principles, 3Blue1Brown / Khan Academy style. Take up to "
+                     "about a minute (~130 words): what it is, why it exists, and the single "
+                     "most useful story of how it's built. Then we go into back-and-forth.",
+            segment="story", max_tokens=700,
+        )
+
+        # 3) Back-and-forth, with periodic quiz + student-recap checkpoints.
+        next_speaker = STUDENT
         while True:
             wc = self._word_count
 
             if wc >= target_words and next_speaker == STUDENT:
-                self._student_turn(director="you've reached real understanding -- summarize what clicked, briefly.", segment="dialogue")
-                self._teacher_turn(director="bring the episode to a natural close and sign off.", segment="close")
+                self._student_turn(director="re-explain the whole thing back in your own words, then say what finally clicked.", segment="recap")
+                self._teacher_turn(director="confirm or correct the recap, then bring the episode to a natural close and sign off.", segment="close")
                 break
+
+            if recap_marks and wc >= recap_marks[0] and next_speaker == STUDENT:
+                recap_marks.pop(0)
+                self._student_turn(director="pause and re-explain, in your own words, what you understand so far; check your mental model and invite correction.", segment="recap")
+                next_speaker = TEACHER
+                continue
 
             if quiz_marks and wc >= quiz_marks[0] and next_speaker == TEACHER:
                 quiz_marks.pop(0)
@@ -224,7 +258,7 @@ class Dialogue:
             "target_minutes": self.cfg.episode.target_minutes,
             "turns": [t.__dict__ for t in self.turns],
         }
-        (out_dir / "script.json").write_text(json.dumps(script, indent=2))
+        (out_dir / "script.json").write_text(json.dumps(script, indent=2, ensure_ascii=False))
         (out_dir / "wiki.md").write_text(getattr(self, "_wiki", ""))
         transcript = "\n\n".join(
             f"{'SENIOR' if t.speaker_id == TEACHER else 'JUNIOR'}"

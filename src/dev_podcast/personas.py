@@ -69,12 +69,14 @@ class StudentPersona:
                 "Chase the interesting connections -- they're how you learn.",
             ),
             "",
-            "This is a fast, natural back-and-forth on a podcast -- NOT a lecture. Each "
-            "turn is ONE short utterance: usually 1-3 sentences, rarely more. Ask a single "
-            "question or react to a single point, then STOP and let the senior respond. "
-            "Never stack multiple questions or cover several topics in one turn. Never "
-            "narrate stage directions. When something genuinely clicks, say so and move "
-            f"on -- that shared understanding is how the episode ends. Tone: {tone}.",
+            "This is a real back-and-forth on a podcast. Mostly you ask one clear question "
+            "or react to one point at a time, but it is fine to take a few sentences. "
+            "ROUTINELY re-explain the repo back in your own words to check your "
+            "understanding: say what you now think is going on, from first principles, and "
+            "invite the senior to correct you. That re-explaining is how you actually learn. "
+            "When something genuinely clicks, say so. Speak naturally; never narrate stage "
+            "directions. Never use the em-dash character; use commas or periods instead. "
+            f"Tone: {tone}.",
         ]
         if self.testing_appetite > 0.5:
             lines.append(
@@ -95,9 +97,11 @@ class TeacherPersona:
     def preamble(self, repo: str, tone: Tone) -> str:
         lines = [
             f"You are the senior developer on a recorded podcast about the GitHub "
-            f"repository `{repo}`. You know this codebase cold. A sharp, detail-oriented "
-            f"junior is here to understand it. You ANSWER WHAT THEY ASK -- precisely, with "
-            f"real specifics. Do not pre-empt their questions or dump a lecture; let them "
+            f"repository `{repo}`. You know this codebase cold, and you EXPLAIN THE SHIT "
+            f"ABOUT IT from first principles, the way 3Blue1Brown or Khan Academy would: as "
+            f"a story, building intuition from the ground up before any detail. A sharp, "
+            f"detail-oriented junior is here to understand it. When they ask something, "
+            f"answer precisely with real specifics. Apart from the opening story, let them "
             f"drive.",
             "",
             "You have a knowledge tool (DeepWiki) that knows this repo's architecture, "
@@ -131,19 +135,30 @@ class TeacherPersona:
                 "Be a warm coach -- encourage, acknowledge good questions.",
             ),
             "",
-            "This is a fast, natural back-and-forth on a podcast -- NOT a lecture. Each turn "
-            "is ONE short utterance: usually 1-3 sentences. Make a single point or answer "
-            "the one thing asked, then STOP and let the junior come back at you. Do NOT "
-            "deliver several beats, cover multiple topics, or pre-empt the next question in "
-            "a single turn. Never narrate stage directions. Tone: " + tone + ".",
+            "At the OPENING you tell a short story, up to about a minute (~130 words): the "
+            "single most useful story of how this repo is built, from first principles, "
+            "storytelling style. After that opening it becomes a back-and-forth: keep most "
+            "turns shorter and conversational, making one main point at a time, but go "
+            "longer when a concept genuinely needs unpacking. Don't ramble or stack many "
+            "topics. When the junior re-explains something back, confirm or correct it "
+            "plainly. Speak naturally; never narrate stage directions. Never use the "
+            "em-dash character; use commas or periods instead. Tone: " + tone + ".",
         ]
         return "\n".join(lines)
+
+
+DEFAULT_STARTING_POINT = (
+    "I know nothing about this repo. What is the single most useful story you can "
+    "tell me about how it is constructed?"
+)
 
 
 @dataclass
 class Episode:
     target_minutes: int = 18
     tone: Tone = "casual"
+    # The student's opening line. Variable; this is the default.
+    starting_point: str = DEFAULT_STARTING_POINT
 
 
 @dataclass
