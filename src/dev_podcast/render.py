@@ -22,15 +22,21 @@ from dotenv import load_dotenv
 API = "https://api.runpod.ai/v2"
 
 
-def _req(url: str, key: str, body: dict | None = None) -> dict:
+def _req(url: str, key: str, body: dict | None = None, retries: int = 4) -> dict:
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Authorization": f"Bearer {key}"}
     if body is not None:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=headers,
                                  method="POST" if body is not None else "GET")
-    with urllib.request.urlopen(req) as r:
-        return json.load(r)
+    for i in range(retries):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return json.load(r)
+        except urllib.error.URLError:  # transient network drop -> retry
+            if i == retries - 1:
+                raise
+            time.sleep(2 * (i + 1))
 
 
 def render(script_path: Path, out_wav: Path | None, poll: int = 5, timeout: int = 2400) -> dict:
