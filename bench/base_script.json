@@ -1,15 +1,45 @@
 {
-  "name": "bench_desmume_opening",
+  "name": "bench",
   "turns": [
     {
       "speaker_id": 1,
       "text": "Okay so I'm coming into this completely cold. I know it's a Nintendo DS emulator and that's about it. If you had to tell me one story about how this thing is actually built, the story that would teach me the most, what would it be?",
-      "segment_type": "open"
+      "segment_type": "line"
     },
     {
       "speaker_id": 0,
       "text": "Alright, here's the one story I'd tell. Picture the Nintendo DS as a tiny machine with two brains inside, not one. There's a fast brain, the ARM9, that runs the game logic, and a slower helper brain, the ARM7, that handles sound and WiFi and the touchscreen.",
-      "segment_type": "story"
+      "segment_type": "line"
+    },
+    {
+      "speaker_id": 1,
+      "text": "Wait, two brains? Why would you ever put two CPUs in a tiny handheld instead of just one fast one?",
+      "segment_type": "line"
+    },
+    {
+      "speaker_id": 0,
+      "text": "Great question, and the answer is half engineering, half history. Back in 2004, a single chip fast enough to do everything would have drained the battery in under an hour.",
+      "segment_type": "line"
+    },
+    {
+      "speaker_id": 1,
+      "text": "Hold on, so the slow chip just sits there doing sound and WiFi while the fast one does all the real work? That kind of feels wasteful to me.",
+      "segment_type": "line"
+    },
+    {
+      "speaker_id": 0,
+      "text": "Exactly the opposite, actually. The ARM7 handles the boring steady jobs so the ARM9 never has to stall waiting on them. It's not wasted, it's division of labor.",
+      "segment_type": "line"
+    },
+    {
+      "speaker_id": 1,
+      "text": "Okay, I think I'm getting it. Let me try saying it back: the whole emulator is basically pretending to be that two-brain machine, step by step. Is that the right picture?",
+      "segment_type": "line"
+    },
+    {
+      "speaker_id": 0,
+      "text": "You've basically got it. The emulator steps both CPUs forward together, routes every memory access through a fake MMU, and the trick is that the game never notices it isn't running on real hardware.",
+      "segment_type": "line"
     }
   ]
 }

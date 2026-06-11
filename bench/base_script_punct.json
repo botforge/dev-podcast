@@ -1,0 +1,45 @@
+{
+  "name": "bench",
+  "turns": [
+    {
+      "speaker_id": 1,
+      "text": "Okay. I'm coming into this completely cold. I know it's a Nintendo DS emulator. That's about it. If you had to tell me one story about how this thing is built. The story that would teach me the most. What would it be?",
+      "segment_type": "line"
+    },
+    {
+      "speaker_id": 0,
+      "text": "Alright. Here's the one story I'd tell. Picture the Nintendo DS as a tiny machine. Two brains inside. Not one. A fast brain, the ARM9, runs the game logic. A slower helper, the ARM7, handles sound and WiFi and the touchscreen.",
+      "segment_type": "line"
+    },
+    {
+      "speaker_id": 1,
+      "text": "Wait. Two brains? Why put two CPUs in a tiny handheld? Why not just one fast one?",
+      "segment_type": "line"
+    },
+    {
+      "speaker_id": 0,
+      "text": "Great question. The answer is half engineering. Half history. Back in 2004 a single chip fast enough to do everything would have drained the battery in under an hour.",
+      "segment_type": "line"
+    },
+    {
+      "speaker_id": 1,
+      "text": "Hold on. So the slow chip just does sound and WiFi. While the fast one does all the real work? That feels wasteful.",
+      "segment_type": "line"
+    },
+    {
+      "speaker_id": 0,
+      "text": "Exactly the opposite. The ARM7 handles the boring steady jobs. So the ARM9 never stalls waiting on them. It's not wasted. It's division of labor.",
+      "segment_type": "line"
+    },
+    {
+      "speaker_id": 1,
+      "text": "Okay. I think I'm getting it. Let me say it back. The whole emulator is pretending to be that two-brain machine. Step by step. Is that the right picture?",
+      "segment_type": "line"
+    },
+    {
+      "speaker_id": 0,
+      "text": "You've basically got it. The emulator steps both CPUs forward together. It routes every memory access through a fake MMU. The trick is simple. The game never notices it isn't real hardware.",
+      "segment_type": "line"
+    }
+  ]
+}
