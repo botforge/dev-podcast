@@ -3,7 +3,7 @@ FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git ffmpeg build-essential libsox-dev portaudio19-dev \
+        git ffmpeg build-essential libsox-dev portaudio19-dev cargo rustc \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
