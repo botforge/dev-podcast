@@ -10,7 +10,10 @@ WORKDIR /app
 RUN git clone --depth 1 https://github.com/fishaudio/fish-speech.git
 WORKDIR /app/fish-speech
 RUN pip install --no-cache-dir -e . \
-    && pip install --no-cache-dir runpod boto3 ormsgpack huggingface_hub
+    && pip install --no-cache-dir runpod boto3 ormsgpack huggingface_hub \
+    # fish's install pulls a torchvision that mismatches the base torch (ABI / _has_ops
+    # circular import). Re-pin the matched trio for the base image's torch 2.4.0.
+    && pip install --no-cache-dir torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0
 
 COPY handler.py /app/fish-speech/handler.py
 
