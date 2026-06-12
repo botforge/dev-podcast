@@ -40,7 +40,7 @@ def _ensure_server():
         print("[boot] starting fish api_server ...", flush=True)
         logf = open(log_path, "wb")
         _proc = subprocess.Popen(
-            ["python", "tools/api_server.py",
+            ["/app/.venv/bin/python", "tools/api_server.py",
              "--llama-checkpoint-path", CKPT,
              "--decoder-checkpoint-path", os.path.join(CKPT, "codec.pth"),
              "--listen", f"127.0.0.1:{PORT}"],

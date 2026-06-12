@@ -2,14 +2,16 @@
 # already correct (no pip-from-scratch dependency war). fish-speech code lives at /app.
 FROM fishaudio/fish-speech:server-cuda
 
-# Only our worker glue (pure-python wheels, no native builds). Most are already present.
-RUN pip install --no-cache-dir runpod boto3 ormsgpack huggingface_hub
+# fish uses a uv venv at /app/.venv -- install our glue INTO it (system python is
+# PEP668 externally-managed). Most of these are already present from fish.
+RUN uv pip install --python /app/.venv/bin/python --no-cache-dir \
+        runpod boto3 ormsgpack huggingface_hub
 
 COPY handler.py /app/handler.py
 
 # s2-pro weights download to the attached network volume on first boot.
 ENV HF_HOME=/runpod-volume/hf
 WORKDIR /app
-# Override the image's server entrypoint with our RunPod handler.
+# Override the image's server entrypoint; run our handler with the venv python.
 ENTRYPOINT []
-CMD ["python", "-u", "/app/handler.py"]
+CMD ["/app/.venv/bin/python", "-u", "/app/handler.py"]
