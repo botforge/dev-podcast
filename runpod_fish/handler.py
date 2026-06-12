@@ -44,7 +44,7 @@ def _ensure_server():
              "--llama-checkpoint-path", CKPT,
              "--decoder-checkpoint-path", os.path.join(CKPT, "codec.pth"),
              "--listen", f"127.0.0.1:{PORT}"],
-            cwd="/app/fish-speech", stdout=logf, stderr=subprocess.STDOUT,
+            cwd="/app", stdout=logf, stderr=subprocess.STDOUT,
         )
 
     def _logtail():
